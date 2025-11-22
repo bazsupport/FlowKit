@@ -66,7 +66,10 @@ func _update_label() -> void:
 			for key in condition_data.inputs:
 				param_pairs.append("%s: %s" % [key, condition_data.inputs[key]])
 			params_text = " [" + ", ".join(param_pairs) + "]"
-		label.text = "Condition: %s%s" % [condition_data.condition_id, params_text]
+		
+		# Check if this is a standalone condition (event_index == -1)
+		var prefix = "Standalone Condition" if event_index == -1 else "Condition"
+		label.text = "%s: %s%s" % [prefix, condition_data.condition_id, params_text]
 
 func _get_drag_data(at_position: Vector2):
 	var preview := duplicate()

@@ -74,6 +74,22 @@ func _run_sheet(sheet: FKEventSheet) -> void:
 	if not current_scene:
 		return
 
+	# Process standalone conditions (run every frame)
+	for standalone_cond in sheet.standalone_conditions:
+		var cnode: Node = current_scene.get_node_or_null(standalone_cond.target_node)
+		if not cnode:
+			continue
+
+		var cond_result: bool = registry.check_condition(standalone_cond.condition_id, cnode, standalone_cond.inputs)
+		if cond_result:
+			# Execute actions associated with this standalone condition
+			for act in standalone_cond.actions:
+				var anode: Node = current_scene.get_node_or_null(act.target_node)
+				if anode:
+					registry.execute_action(act.action_id, anode, act.inputs)
+				else:
+					print("[FlowKit] Standalone condition action target node not found: ", act.target_node)
+
 	for block in sheet.events:
 		# Resolve target node (relative to the current scene)
 		var node: Node = current_scene.get_node_or_null(block.target_node)

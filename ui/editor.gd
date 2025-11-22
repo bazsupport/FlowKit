@@ -17,6 +17,7 @@ var action_scene = preload("res://addons/flowkit/ui/workspace/action.tscn")
 @onready var content_container := $ScrollContainer/MarginContainer/VBoxContainer
 @onready var no_action_available := $"ScrollContainer/MarginContainer/VBoxContainer/No Action Available"
 @onready var add_event_button := $ScrollContainer/MarginContainer/VBoxContainer/AddEventButton
+@onready var add_condition_button := $ScrollContainer/MarginContainer/VBoxContainer/AddConditionButton
 @onready var add_action_button := $ScrollContainer/MarginContainer/VBoxContainer/AddActionButton
 @onready var select_modal := $SelectModal
 @onready var select_event_modal := $SelectEventModal
@@ -208,6 +209,8 @@ func _show_empty_state() -> void:
 		no_action_available.visible = true
 	if add_event_button:
 		add_event_button.visible = false
+	if add_condition_button:
+		add_condition_button.visible = false
 	if add_action_button:
 		add_action_button.visible = false
 
@@ -217,6 +220,8 @@ func _show_content_state() -> void:
 		no_action_available.visible = false
 	if add_event_button:
 		add_event_button.visible = true
+	if add_condition_button:
+		add_condition_button.visible = true
 	if add_action_button:
 		add_action_button.visible = true
 
@@ -233,6 +238,38 @@ func _populate_event_sheet(sheet: FKEventSheet) -> void:
 	
 	# Get the index where we should insert (right after menubar)
 	var insert_index = menubar.get_index() + 1
+	
+	# Display standalone conditions first
+	for cond_idx in range(sheet.standalone_conditions.size()):
+		var condition = sheet.standalone_conditions[cond_idx]
+		var condition_node = condition_scene.instantiate()
+		content_container.add_child(condition_node)
+		content_container.move_child(condition_node, insert_index)
+		
+		# Set data with -1 event_index to indicate standalone
+		condition_node.set_condition_data(condition, -1, cond_idx)
+		condition_node.insert_condition_requested.connect(_on_insert_standalone_condition_requested)
+		condition_node.delete_condition_requested.connect(_on_delete_standalone_condition_requested)
+		condition_node.negate_condition_requested.connect(_on_negate_standalone_condition_requested)
+		condition_node.edit_condition_requested.connect(_on_edit_standalone_condition_requested)
+		
+		insert_index += 1
+		
+		# Display actions for this standalone condition
+		for act_idx in range(condition.actions.size()):
+			var action = condition.actions[act_idx]
+			var action_node = action_scene.instantiate()
+			content_container.add_child(action_node)
+			content_container.move_child(action_node, insert_index)
+			
+			# Set data with -1 event_index and store condition index
+			action_node.set_action_data(action, -1, act_idx)
+			action_node.set_meta("standalone_condition_index", cond_idx)
+			action_node.insert_action_requested.connect(_on_insert_standalone_action_requested)
+			action_node.delete_action_requested.connect(_on_delete_standalone_action_requested)
+			action_node.edit_action_requested.connect(_on_edit_standalone_action_requested)
+			
+			insert_index += 1
 	
 	# Loop through all events in the sheet
 	for event_idx in range(sheet.events.size()):
@@ -600,31 +637,39 @@ func _on_select_action_modal_action_selected(node_path: String, action_id: Strin
 		expression_editor_modal.popup_centered()
 	else:
 		# No inputs needed, create the action directly
-		_create_action_with_expressions(node_path, action_id, {})
+		if pending_standalone_action_condition_index >= 0:
+			_create_standalone_action_with_expressions(node_path, action_id, {})
+		else:
+			_create_action_with_expressions(node_path, action_id, {})
 
 func _on_expression_editor_confirmed(node_path: String, action_id: String, expressions: Dictionary) -> void:
 	"""Handle expression editor confirmation - create or update the action."""
 	print("Action confirmed with expressions: ", expressions)
 	
 	if is_editing_action:
-		# Update existing action
-		_update_action_with_expressions(pending_action_event_index, pending_action_index, expressions)
-		is_editing_action = false
+		if pending_standalone_action_condition_index >= 0:
+			# Update existing standalone condition action
+			_update_standalone_action_with_expressions(pending_standalone_action_condition_index, pending_standalone_action_index, expressions)
+			is_editing_action = false
+			pending_standalone_action_condition_index = -1
+			pending_standalone_action_index = -1
+		else:
+			# Update existing event action
+			_update_action_with_expressions(pending_action_event_index, pending_action_index, expressions)
+			is_editing_action = false
+	elif pending_standalone_action_condition_index >= 0:
+		# Create new standalone condition action
+		_create_standalone_action_with_expressions(node_path, action_id, expressions)
+		pending_standalone_action_condition_index = -1
+		pending_standalone_action_index = -1
 	else:
-		# Create new action
+		# Create new event action
 		_create_action_with_expressions(node_path, action_id, expressions)
 
 func _create_action_with_expressions(node_path: String, action_id: String, expressions: Dictionary) -> void:
-	"""Create a new action and add it to the most recent event in the event sheet."""
+	"""Create a new action and add it to the most recent event or standalone condition in the event sheet."""
 	var file_path = "res://addons/flowkit/saved/event_sheet/%s.tres" % scene_name
 	var sheet = _load_event_sheet(file_path)
-	
-	if not sheet or sheet.events.is_empty():
-		print("No events available. Please create an event first.")
-		return
-	
-	# Add to the last event
-	var last_event_idx = sheet.events.size() - 1
 	
 	# Create a new action
 	var new_action = FKEventAction.new()
@@ -632,14 +677,34 @@ func _create_action_with_expressions(node_path: String, action_id: String, expre
 	new_action.target_node = node_path
 	new_action.inputs = expressions
 	
-	# Create new actions array with the new action
-	var new_actions: Array[FKEventAction] = []
-	for existing_action in sheet.events[last_event_idx].actions:
-		new_actions.append(existing_action)
-	new_actions.append(new_action)
-	
-	sheet.events[last_event_idx].actions = new_actions
-	_save_and_refresh(sheet, file_path)
+	# Prioritize adding to standalone conditions if they exist and no events
+	if not sheet.standalone_conditions.is_empty() and sheet.events.is_empty():
+		# Add to the last standalone condition
+		var last_cond_idx = sheet.standalone_conditions.size() - 1
+		
+		# Create new actions array with the new action
+		var new_actions: Array[FKEventAction] = []
+		for existing_action in sheet.standalone_conditions[last_cond_idx].actions:
+			new_actions.append(existing_action)
+		new_actions.append(new_action)
+		
+		sheet.standalone_conditions[last_cond_idx].actions = new_actions
+		_save_and_refresh(sheet, file_path)
+	elif not sheet.events.is_empty():
+		# Add to the last event
+		var last_event_idx = sheet.events.size() - 1
+		
+		# Create new actions array with the new action
+		var new_actions: Array[FKEventAction] = []
+		for existing_action in sheet.events[last_event_idx].actions:
+			new_actions.append(existing_action)
+		new_actions.append(new_action)
+		
+		sheet.events[last_event_idx].actions = new_actions
+		_save_and_refresh(sheet, file_path)
+	else:
+		print("No events or standalone conditions available. Please create one first.")
+		return
 
 func _update_action_with_expressions(event_idx: int, action_idx: int, expressions: Dictionary) -> void:
 	"""Update an existing action's parameters."""
@@ -653,6 +718,240 @@ func _update_action_with_expressions(event_idx: int, action_idx: int, expression
 	# Update the inputs
 	sheet.events[event_idx].actions[action_idx].inputs = expressions
 	_save_and_refresh(sheet, file_path)
+
+func _create_standalone_action_with_expressions(node_path: String, action_id: String, expressions: Dictionary) -> void:
+	"""Create a new action and add it to a standalone condition."""
+	var file_path = "res://addons/flowkit/saved/event_sheet/%s.tres" % scene_name
+	var sheet = _load_event_sheet(file_path)
+	
+	if not sheet or pending_standalone_action_condition_index < 0 or pending_standalone_action_condition_index >= sheet.standalone_conditions.size():
+		print("Invalid standalone condition index for action insertion")
+		return
+	
+	# Create a new action
+	var new_action = FKEventAction.new()
+	new_action.action_id = action_id
+	new_action.target_node = node_path
+	new_action.inputs = expressions
+	
+	# Create new actions array with insertion at the correct position
+	var new_actions: Array[FKEventAction] = []
+	var insert_at = pending_standalone_action_index if pending_standalone_action_index >= 0 else sheet.standalone_conditions[pending_standalone_action_condition_index].actions.size()
+	
+	for i in range(sheet.standalone_conditions[pending_standalone_action_condition_index].actions.size()):
+		new_actions.append(sheet.standalone_conditions[pending_standalone_action_condition_index].actions[i])
+		if i == insert_at - 1:
+			new_actions.append(new_action)
+	
+	# If inserting at the end or in an empty list
+	if insert_at >= sheet.standalone_conditions[pending_standalone_action_condition_index].actions.size():
+		new_actions.append(new_action)
+	
+	sheet.standalone_conditions[pending_standalone_action_condition_index].actions = new_actions
+	_save_and_refresh(sheet, file_path)
+
+func _update_standalone_action_with_expressions(condition_idx: int, action_idx: int, expressions: Dictionary) -> void:
+	"""Update an existing standalone condition action's parameters."""
+	var file_path = "res://addons/flowkit/saved/event_sheet/%s.tres" % scene_name
+	var sheet = _load_event_sheet(file_path)
+	
+	if not sheet or condition_idx >= sheet.standalone_conditions.size() or action_idx >= sheet.standalone_conditions[condition_idx].actions.size():
+		print("Invalid indices for standalone action update")
+		return
+	
+	# Update the inputs
+	sheet.standalone_conditions[condition_idx].actions[action_idx].inputs = expressions
+	_save_and_refresh(sheet, file_path)
+
+# Standalone condition handlers
+
+var pending_standalone_condition_index: int = -1
+var pending_standalone_action_condition_index: int = -1
+var pending_standalone_action_index: int = -1
+var is_adding_standalone_condition: bool = false
+
+func _on_add_condition_button_pressed() -> void:
+	"""Start the standalone condition adding workflow."""
+	if not editor_interface:
+		print("Editor interface not available")
+		return
+	
+	var current_scene = editor_interface.get_edited_scene_root()
+	if not current_scene:
+		print("No scene currently open")
+		return
+	
+	is_adding_standalone_condition = true
+	
+	# Pass the editor interface to the modal so it can access node icons
+	select_condition_node_modal.set_editor_interface(editor_interface)
+	
+	# Populate the modal with nodes from the current scene
+	select_condition_node_modal.populate_from_scene(current_scene)
+	
+	# Show the popup centered
+	select_condition_node_modal.popup_centered()
+
+func _on_insert_standalone_condition_requested(condition_node) -> void:
+	"""Insert a new standalone condition."""
+	var cond_idx = condition_node.condition_index
+	if cond_idx < 0:
+		print("Invalid condition index")
+		return
+	
+	# Store context for later
+	pending_standalone_condition_index = cond_idx + 1
+	is_adding_standalone_condition = true
+	
+	if not editor_interface:
+		print("Editor interface not available")
+		return
+	
+	var current_scene = editor_interface.get_edited_scene_root()
+	if not current_scene:
+		print("No scene currently open")
+		return
+	
+	select_condition_node_modal.set_editor_interface(editor_interface)
+	select_condition_node_modal.populate_from_scene(current_scene)
+	select_condition_node_modal.popup_centered()
+
+func _on_delete_standalone_condition_requested(condition_node) -> void:
+	"""Delete a standalone condition."""
+	var cond_idx = condition_node.condition_index
+	if cond_idx < 0:
+		print("Invalid condition index")
+		return
+	
+	var file_path = "res://addons/flowkit/saved/event_sheet/%s.tres" % scene_name
+	var sheet = _load_event_sheet(file_path)
+	if not sheet:
+		return
+	
+	# Create new standalone_conditions array without the deleted condition
+	var new_conditions: Array[FKEventCondition] = []
+	for i in range(sheet.standalone_conditions.size()):
+		if i != cond_idx:
+			new_conditions.append(sheet.standalone_conditions[i])
+	
+	sheet.standalone_conditions = new_conditions
+	_save_and_refresh(sheet, file_path)
+
+func _on_negate_standalone_condition_requested(condition_node) -> void:
+	"""Negate a standalone condition (placeholder for now)."""
+	print("Negate standalone condition at index %d" % condition_node.condition_index)
+
+func _on_edit_standalone_condition_requested(condition_node) -> void:
+	"""Edit a standalone condition's parameters."""
+	var cond_idx = condition_node.condition_index
+	if cond_idx < 0:
+		print("Invalid condition index")
+		return
+	
+	var file_path = "res://addons/flowkit/saved/event_sheet/%s.tres" % scene_name
+	var sheet = _load_event_sheet(file_path)
+	if not sheet or cond_idx >= sheet.standalone_conditions.size():
+		return
+	
+	var condition = sheet.standalone_conditions[cond_idx]
+	
+	# Store context for saving later
+	is_editing_condition = true
+	is_adding_standalone_condition = false
+	pending_standalone_condition_index = cond_idx
+	pending_condition_id = condition.condition_id
+	pending_condition_node_path = String(condition.target_node)
+	
+	# Convert inputs Dictionary to Array format expected by expression editor
+	var inputs_array = []
+	for key in condition.inputs.keys():
+		inputs_array.append({"name": key, "type": "string"})
+	
+	# Open expression editor with current values
+	condition_expression_editor_modal.populate_inputs(pending_condition_node_path, pending_condition_id, inputs_array)
+	condition_expression_editor_modal.popup_centered()
+
+func _on_insert_standalone_action_requested(action_node) -> void:
+	"""Insert a new action for a standalone condition."""
+	var cond_idx = action_node.get_meta("standalone_condition_index", -1)
+	var action_idx = action_node.action_index
+	
+	if cond_idx < 0 or action_idx < 0:
+		print("Invalid indices")
+		return
+	
+	# Store context
+	pending_standalone_action_condition_index = cond_idx
+	pending_standalone_action_index = action_idx + 1
+	
+	if not editor_interface:
+		print("Editor interface not available")
+		return
+	
+	var current_scene = editor_interface.get_edited_scene_root()
+	if not current_scene:
+		print("No scene currently open")
+		return
+	
+	# Start action selection workflow
+	select_action_node_modal.set_editor_interface(editor_interface)
+	select_action_node_modal.populate_from_scene(current_scene)
+	select_action_node_modal.popup_centered()
+
+func _on_delete_standalone_action_requested(action_node) -> void:
+	"""Delete a standalone condition action."""
+	var cond_idx = action_node.get_meta("standalone_condition_index", -1)
+	var action_idx = action_node.action_index
+	
+	if cond_idx < 0 or action_idx < 0:
+		print("Invalid indices")
+		return
+	
+	var file_path = "res://addons/flowkit/saved/event_sheet/%s.tres" % scene_name
+	var sheet = _load_event_sheet(file_path)
+	if not sheet or cond_idx >= sheet.standalone_conditions.size():
+		return
+	
+	# Create new actions array without the deleted action
+	var new_actions: Array[FKEventAction] = []
+	for i in range(sheet.standalone_conditions[cond_idx].actions.size()):
+		if i != action_idx:
+			new_actions.append(sheet.standalone_conditions[cond_idx].actions[i])
+	
+	sheet.standalone_conditions[cond_idx].actions = new_actions
+	_save_and_refresh(sheet, file_path)
+
+func _on_edit_standalone_action_requested(action_node) -> void:
+	"""Edit a standalone condition action's parameters."""
+	var cond_idx = action_node.get_meta("standalone_condition_index", -1)
+	var action_idx = action_node.action_index
+	
+	if cond_idx < 0 or action_idx < 0:
+		print("Invalid indices")
+		return
+	
+	var file_path = "res://addons/flowkit/saved/event_sheet/%s.tres" % scene_name
+	var sheet = _load_event_sheet(file_path)
+	if not sheet or cond_idx >= sheet.standalone_conditions.size() or action_idx >= sheet.standalone_conditions[cond_idx].actions.size():
+		return
+	
+	var action = sheet.standalone_conditions[cond_idx].actions[action_idx]
+	
+	# Store context for saving later
+	is_editing_action = true
+	pending_standalone_action_condition_index = cond_idx
+	pending_standalone_action_index = action_idx
+	pending_action_id = action.action_id
+	pending_action_node_path = String(action.target_node)
+	
+	# Convert inputs Dictionary to Array format expected by expression editor
+	var inputs_array = []
+	for key in action.inputs.keys():
+		inputs_array.append({"name": key, "type": "string"})
+	
+	# Open expression editor with current values
+	expression_editor_modal.populate_inputs(pending_action_node_path, pending_action_id, inputs_array)
+	expression_editor_modal.popup_centered()
 
 # Condition workflow handlers
 
@@ -691,11 +990,21 @@ func _on_condition_expression_editor_confirmed(node_path: String, condition_id: 
 	print("Condition confirmed with expressions: ", expressions)
 	
 	if is_editing_condition:
-		# Update existing condition
-		_update_condition_with_expressions(pending_condition_node_index, pending_condition_index, expressions)
-		is_editing_condition = false
+		if is_adding_standalone_condition or pending_standalone_condition_index >= 0:
+			# Update existing standalone condition
+			_update_standalone_condition_with_expressions(pending_standalone_condition_index, expressions)
+			is_editing_condition = false
+			is_adding_standalone_condition = false
+		else:
+			# Update existing event condition
+			_update_condition_with_expressions(pending_condition_node_index, pending_condition_index, expressions)
+			is_editing_condition = false
+	elif is_adding_standalone_condition:
+		# Create new standalone condition
+		_create_standalone_condition_with_expressions(node_path, condition_id, expressions)
+		is_adding_standalone_condition = false
 	else:
-		# Create new condition
+		# Create new event condition
 		_create_condition_with_expressions(node_path, condition_id, expressions)
 
 func _create_condition_with_expressions(node_path: String, condition_id: String, expressions: Dictionary) -> void:
@@ -740,6 +1049,55 @@ func _update_condition_with_expressions(event_idx: int, condition_idx: int, expr
 	
 	# Update the inputs
 	sheet.events[event_idx].conditions[condition_idx].inputs = expressions
+	_save_and_refresh(sheet, file_path)
+
+func _create_standalone_condition_with_expressions(node_path: String, condition_id: String, expressions: Dictionary) -> void:
+	"""Create a new standalone condition."""
+	var file_path = "res://addons/flowkit/saved/event_sheet/%s.tres" % scene_name
+	var sheet = _load_event_sheet(file_path)
+	
+	if not sheet:
+		print("Failed to load event sheet")
+		return
+	
+	# Create a new standalone condition
+	var new_condition = FKEventCondition.new()
+	new_condition.condition_id = condition_id
+	new_condition.target_node = node_path
+	new_condition.inputs = expressions
+	var empty_actions: Array[FKEventAction] = []
+	new_condition.actions = empty_actions
+	
+	# Create new standalone_conditions array with insertion
+	var new_conditions: Array[FKEventCondition] = []
+	var insert_at = pending_standalone_condition_index if pending_standalone_condition_index >= 0 else sheet.standalone_conditions.size()
+	
+	for i in range(sheet.standalone_conditions.size()):
+		new_conditions.append(sheet.standalone_conditions[i])
+		if i == insert_at - 1:
+			new_conditions.append(new_condition)
+	
+	# If inserting at the end or in an empty list
+	if insert_at >= sheet.standalone_conditions.size():
+		new_conditions.append(new_condition)
+	
+	sheet.standalone_conditions = new_conditions
+	_save_and_refresh(sheet, file_path)
+	
+	# Reset pending index
+	pending_standalone_condition_index = -1
+
+func _update_standalone_condition_with_expressions(condition_idx: int, expressions: Dictionary) -> void:
+	"""Update an existing standalone condition's parameters."""
+	var file_path = "res://addons/flowkit/saved/event_sheet/%s.tres" % scene_name
+	var sheet = _load_event_sheet(file_path)
+	
+	if not sheet or condition_idx >= sheet.standalone_conditions.size():
+		print("Invalid index for standalone condition update")
+		return
+	
+	# Update the inputs
+	sheet.standalone_conditions[condition_idx].inputs = expressions
 	_save_and_refresh(sheet, file_path)
 	
 		

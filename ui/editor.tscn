@@ -111,6 +111,15 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_button")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button")
 text = "➕ Add Event"
 
+[node name="AddConditionButton" type="Button" parent="ScrollContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.95, 1, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button")
+text = "➕ Add Condition (Runs Every Frame)"
+
 [node name="AddActionButton" type="Button" parent="ScrollContainer/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.95, 1, 1)
@@ -139,6 +148,7 @@ text = "➕ Add Action"
 [connection signal="new_sheet" from="ScrollContainer/MarginContainer/VBoxContainer/MenuBar" to="." method="_on_menu_bar_new_sheet"]
 [connection signal="id_pressed" from="ScrollContainer/MarginContainer/VBoxContainer/MenuBar/File" to="ScrollContainer/MarginContainer/VBoxContainer/MenuBar" method="_on_file_id_pressed"]
 [connection signal="pressed" from="ScrollContainer/MarginContainer/VBoxContainer/AddEventButton" to="." method="_on_add_event_button_pressed"]
+[connection signal="pressed" from="ScrollContainer/MarginContainer/VBoxContainer/AddConditionButton" to="." method="_on_add_condition_button_pressed"]
 [connection signal="pressed" from="ScrollContainer/MarginContainer/VBoxContainer/AddActionButton" to="." method="_on_add_action_button_pressed"]
 [connection signal="node_selected" from="SelectModal" to="." method="_on_select_modal_node_selected"]
 [connection signal="event_selected" from="SelectEventModal" to="." method="_on_select_modal_event_selected"]
