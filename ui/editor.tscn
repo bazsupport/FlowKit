@@ -1,6 +1,6 @@
 [gd_scene load_steps=12 format=3 uid="uid://d1uy22pv42td3"]
 
-[ext_resource type="Script" path="res://addons/flowkit/ui/editor_clean.gd" id="1_clean"]
+[ext_resource type="Script" path="res://addons/flowkit/ui/editor.gd" id="1_clean"]
 [ext_resource type="Script" path="res://addons/flowkit/ui/blocks_container.gd" id="2_blocks"]
 [ext_resource type="Script" uid="uid://dg46wtoo70ju2" path="res://addons/flowkit/ui/menu_bar.gd" id="2_tc3av"]
 [ext_resource type="PackedScene" uid="uid://buxqkjavs51qe" path="res://addons/flowkit/ui/modals/select.tscn" id="8_select"]
