@@ -1,0 +1,8 @@
+# Export only the addons/flowkit directory
+# This ensures that when cloning as a submodule or using git archive,
+# only the plugin files are included
+
+/* export-ignore
+!/addons/ export-ignore
+/addons/* export-ignore
+!/addons/flowkit/
