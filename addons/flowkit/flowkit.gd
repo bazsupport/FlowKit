@@ -81,4 +81,4 @@ func _get_plugin_name() -> String:
 	return "FlowKit"
 
 func _get_plugin_icon() -> Texture2D:
-	return get_editor_interface().get_editor_theme().get_icon("Node", "EditorIcons")
+	return preload("res://addons/flowkit/assets/icon.svg")

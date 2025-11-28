@@ -44,20 +44,6 @@ func _build_ui() -> void:
 	header_container.add_sibling(top_separator)
 	header_container.move_to_front()
 	
-	# Icon (using built-in Godot icon)
-	icon = TextureRect.new()
-	icon.custom_minimum_size = Vector2(16, 16)
-	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	# Icon will be set in _ready after theme is available
-	header_container.add_child(icon)
-	
-	# Title label
-	title_label = Label.new()
-	title_label.text = "FlowKit"
-	title_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
-	header_container.add_child(title_label)
-	
 	# Content container
 	content_container = VBoxContainer.new()
 	content_container.add_theme_constant_override("separation", 4)
