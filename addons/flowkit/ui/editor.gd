@@ -30,9 +30,13 @@ var pending_block_type: String = ""  # "event", "condition", "action"
 var pending_node_path: String = ""
 var pending_id: String = ""
 var pending_target_node = null  # For insert/replace operations
+var selected_block = null  # Currently selected block for visual feedback
+var clipboard_blocks: Array = []  # Stores copied block data for paste
 
 func _ready() -> void:
 	_setup_ui()
+	# Connect block_moved signal for autosave on drag-and-drop reorder
+	blocks_container.block_moved.connect(_save_sheet)
 
 func _setup_ui() -> void:
 	"""Initialize UI state."""
@@ -62,6 +66,192 @@ func set_registry(reg: Node) -> void:
 
 func set_generator(gen) -> void:
 	generator = gen
+
+func _input(event: InputEvent) -> void:
+	# Only handle key press (not echo/repeat)
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	
+	# Safety: Only act if mouse is within our blocks area
+	if not _is_mouse_in_blocks_area():
+		return
+	
+	# Handle Delete key
+	if event.keycode == KEY_DELETE:
+		if selected_block and is_instance_valid(selected_block):
+			_delete_selected_block()
+	# Handle Ctrl+C (copy)
+	elif event.keycode == KEY_C and event.ctrl_pressed:
+		if selected_block and is_instance_valid(selected_block):
+			_copy_selected_block()
+	# Handle Ctrl+V (paste)
+	elif event.keycode == KEY_V and event.ctrl_pressed:
+		_paste_from_clipboard()
+
+func _is_mouse_in_blocks_area() -> bool:
+	"""Check if mouse is hovering over the blocks container."""
+	var mouse_pos = get_global_mouse_position()
+	return blocks_container.get_global_rect().has_point(mouse_pos)
+
+func _is_standalone_condition(block) -> bool:
+	"""Check if a condition has no event before it (making it standalone)."""
+	var blocks = _get_blocks()
+	var block_idx = blocks.find(block)
+	
+	for i in range(block_idx):
+		if blocks[i].has_method("get_event_data"):
+			return false  # Found an event before this condition
+	
+	return true
+
+func _get_block_children(block) -> Array:
+	"""Get all blocks that should be cascade-deleted with this block."""
+	var children = []
+	var blocks = _get_blocks()
+	var block_idx = blocks.find(block)
+	
+	if block_idx == -1:
+		return children
+	
+	# Events: collect everything until next event
+	if block.has_method("get_event_data"):
+		for i in range(block_idx + 1, blocks.size()):
+			var next_block = blocks[i]
+			if next_block.has_method("get_event_data"):
+				break
+			children.append(next_block)
+		return children
+	
+	# Any condition: collect actions until next condition/event
+	if block.has_method("get_condition_data"):
+		for i in range(block_idx + 1, blocks.size()):
+			var next_block = blocks[i]
+			if next_block.has_method("get_event_data") or next_block.has_method("get_condition_data"):
+				break
+			children.append(next_block)
+		return children
+	
+	# Actions have no children
+	return children
+
+func _delete_selected_block() -> void:
+	"""Delete the currently selected block and its children."""
+	var block_to_delete = selected_block
+	
+	# Clear selection first
+	if block_to_delete.has_method("set_selected"):
+		block_to_delete.set_selected(false)
+	selected_block = null
+	
+	# Get children to cascade delete
+	var children = _get_block_children(block_to_delete)
+	
+	# Delete children first
+	for child in children:
+		blocks_container.remove_child(child)
+		child.queue_free()
+	
+	# Delete the main block
+	blocks_container.remove_child(block_to_delete)
+	block_to_delete.queue_free()
+	_save_sheet()
+
+func _copy_selected_block() -> void:
+	"""Copy selected block and its children to clipboard."""
+	if not selected_block or not is_instance_valid(selected_block):
+		return
+	
+	clipboard_blocks.clear()
+	
+	# Get block + children
+	var blocks = [selected_block]
+	blocks.append_array(_get_block_children(selected_block))
+	
+	# Store data (not nodes) for each block
+	for block in blocks:
+		if block.has_method("get_event_data"):
+			var data = block.get_event_data()
+			clipboard_blocks.append({
+				"type": "event",
+				"event_id": data.event_id,
+				"target_node": data.target_node,
+				"inputs": data.inputs.duplicate()
+			})
+		elif block.has_method("get_condition_data"):
+			var data = block.get_condition_data()
+			clipboard_blocks.append({
+				"type": "condition",
+				"condition_id": data.condition_id,
+				"target_node": data.target_node,
+				"inputs": data.inputs.duplicate(),
+				"negated": data.negated
+			})
+		elif block.has_method("get_action_data"):
+			var data = block.get_action_data()
+			clipboard_blocks.append({
+				"type": "action",
+				"action_id": data.action_id,
+				"target_node": data.target_node,
+				"inputs": data.inputs.duplicate()
+			})
+	
+	print("Copied %d block(s) to clipboard" % clipboard_blocks.size())
+
+func _paste_from_clipboard() -> void:
+	"""Paste blocks from clipboard after selected block (or at end)."""
+	if clipboard_blocks.is_empty():
+		return
+	
+	# Calculate insert position
+	var insert_idx = blocks_container.get_child_count()  # Default: end
+	if selected_block and is_instance_valid(selected_block):
+		insert_idx = selected_block.get_index() + 1
+		# Insert after children of selected block
+		insert_idx += _get_block_children(selected_block).size()
+	
+	# Create and insert blocks
+	var first_new_block = null
+	for block_data in clipboard_blocks:
+		var new_node = null
+		match block_data["type"]:
+			"event":
+				var data = FKEventBlock.new()
+				data.event_id = block_data["event_id"]
+				data.target_node = block_data["target_node"]
+				data.inputs = block_data["inputs"].duplicate()
+				data.conditions = [] as Array[FKEventCondition]
+				data.actions = [] as Array[FKEventAction]
+				new_node = _create_event_block(data)
+			"condition":
+				var data = FKEventCondition.new()
+				data.condition_id = block_data["condition_id"]
+				data.target_node = block_data["target_node"]
+				data.inputs = block_data["inputs"].duplicate()
+				data.negated = block_data["negated"]
+				data.actions = [] as Array[FKEventAction]
+				new_node = _create_condition_block(data)
+			"action":
+				var data = FKEventAction.new()
+				data.action_id = block_data["action_id"]
+				data.target_node = block_data["target_node"]
+				data.inputs = block_data["inputs"].duplicate()
+				new_node = _create_action_block(data)
+		
+		if new_node:
+			blocks_container.add_child(new_node)
+			blocks_container.move_child(new_node, insert_idx)
+			insert_idx += 1
+			if not first_new_block:
+				first_new_block = new_node
+	
+	_show_content_state()
+	_save_sheet()
+	
+	# Select the first pasted block
+	if first_new_block:
+		_on_block_selected(first_new_block)
+	
+	print("Pasted %d block(s) from clipboard" % clipboard_blocks.size())
 
 func _process(_delta: float) -> void:
 	if not editor_interface:
@@ -328,6 +518,7 @@ func _connect_event_signals(node) -> void:
 	node.replace_event_requested.connect(_on_event_replace.bind(node))
 	node.delete_event_requested.connect(_on_event_delete.bind(node))
 	node.edit_event_requested.connect(_on_event_edit.bind(node))
+	node.selected.connect(_on_block_selected)
 
 func _connect_condition_signals(node) -> void:
 	node.insert_condition_requested.connect(_on_condition_insert_condition.bind(node))
@@ -335,12 +526,14 @@ func _connect_condition_signals(node) -> void:
 	node.delete_condition_requested.connect(_on_condition_delete.bind(node))
 	node.negate_condition_requested.connect(_on_condition_negate.bind(node))
 	node.edit_condition_requested.connect(_on_condition_edit.bind(node))
+	node.selected.connect(_on_block_selected)
 
 func _connect_action_signals(node) -> void:
 	node.insert_action_requested.connect(_on_action_insert_action.bind(node))
 	node.replace_action_requested.connect(_on_action_replace.bind(node))
 	node.delete_action_requested.connect(_on_action_delete.bind(node))
 	node.edit_action_requested.connect(_on_action_edit.bind(node))
+	node.selected.connect(_on_block_selected)
 
 # === Menu Button Handlers ===
 
@@ -404,19 +597,32 @@ func _on_add_event_button_pressed() -> void:
 func _on_add_condition_button_pressed() -> void:
 	if not editor_interface:
 		return
-	_start_add_workflow("condition")
+	# Use selected block as insert target
+	_start_add_workflow("condition", selected_block)
 
 func _on_add_action_button_pressed() -> void:
 	if not editor_interface:
 		return
-	_start_add_workflow("action")
+	# Use selected block as insert target
+	_start_add_workflow("action", selected_block)
+
+func _on_block_selected(block) -> void:
+	"""Handle block selection with visual feedback."""
+	# Deselect previous block
+	if selected_block and is_instance_valid(selected_block) and selected_block.has_method("set_selected"):
+		selected_block.set_selected(false)
+	
+	# Select new block
+	selected_block = block
+	if selected_block and selected_block.has_method("set_selected"):
+		selected_block.set_selected(true)
 
 # === Workflow System ===
 
-func _start_add_workflow(block_type: String) -> void:
+func _start_add_workflow(block_type: String, target_node = null) -> void:
 	"""Start workflow to add a new block."""
 	pending_block_type = block_type
-	pending_target_node = null
+	pending_target_node = target_node
 	
 	var scene_root = editor_interface.get_edited_scene_root()
 	if not scene_root:
@@ -528,6 +734,7 @@ func _finalize_event_creation(inputs: Dictionary) -> void:
 	
 	_show_content_state()
 	_reset_workflow()
+	_save_sheet()
 
 func _finalize_condition_creation(inputs: Dictionary) -> void:
 	"""Create and add condition block."""
@@ -549,6 +756,7 @@ func _finalize_condition_creation(inputs: Dictionary) -> void:
 	
 	_show_content_state()
 	_reset_workflow()
+	_save_sheet()
 
 func _finalize_action_creation(inputs: Dictionary) -> void:
 	"""Create and add action block."""
@@ -568,6 +776,7 @@ func _finalize_action_creation(inputs: Dictionary) -> void:
 	
 	_show_content_state()
 	_reset_workflow()
+	_save_sheet()
 
 func _update_event_inputs(expressions: Dictionary) -> void:
 	"""Update existing event block with new inputs."""
@@ -577,6 +786,7 @@ func _update_event_inputs(expressions: Dictionary) -> void:
 			data.inputs = expressions
 			pending_target_node.update_display()
 	_reset_workflow()
+	_save_sheet()
 
 func _update_condition_inputs(expressions: Dictionary) -> void:
 	"""Update existing condition block with new inputs."""
@@ -586,6 +796,7 @@ func _update_condition_inputs(expressions: Dictionary) -> void:
 			data.inputs = expressions
 			pending_target_node.update_display()
 	_reset_workflow()
+	_save_sheet()
 
 func _update_action_inputs(expressions: Dictionary) -> void:
 	"""Update existing action block with new inputs."""
@@ -595,6 +806,7 @@ func _update_action_inputs(expressions: Dictionary) -> void:
 			data.inputs = expressions
 			pending_target_node.update_display()
 	_reset_workflow()
+	_save_sheet()
 
 func _replace_event(expressions: Dictionary) -> void:
 	"""Replace existing event block with new type."""
@@ -624,6 +836,7 @@ func _replace_event(expressions: Dictionary) -> void:
 	blocks_container.move_child(new_node, old_index)
 	
 	_reset_workflow()
+	_save_sheet()
 
 func _replace_condition(expressions: Dictionary) -> void:
 	"""Replace existing condition block with new type."""
@@ -653,6 +866,7 @@ func _replace_condition(expressions: Dictionary) -> void:
 	blocks_container.move_child(new_node, old_index)
 	
 	_reset_workflow()
+	_save_sheet()
 
 func _replace_action(expressions: Dictionary) -> void:
 	"""Replace existing action block with new type."""
@@ -679,6 +893,7 @@ func _replace_action(expressions: Dictionary) -> void:
 	blocks_container.move_child(new_node, old_index)
 	
 	_reset_workflow()
+	_save_sheet()
 
 func _reset_workflow() -> void:
 	"""Clear workflow state."""
@@ -714,6 +929,7 @@ func _on_event_replace(signal_node, bound_node) -> void:
 func _on_event_delete(signal_node, bound_node) -> void:
 	blocks_container.remove_child(bound_node)
 	bound_node.queue_free()
+	_save_sheet()
 
 func _on_event_edit(signal_node, bound_node) -> void:
 	var data = bound_node.get_event_data()
@@ -769,11 +985,13 @@ func _on_condition_replace(signal_node, bound_node) -> void:
 func _on_condition_delete(signal_node, bound_node) -> void:
 	blocks_container.remove_child(bound_node)
 	bound_node.queue_free()
+	_save_sheet()
 
 func _on_condition_negate(signal_node, bound_node) -> void:
 	var data = bound_node.get_condition_data()
 	data.negated = not data.negated
 	bound_node.update_display()
+	_save_sheet()
 
 func _on_condition_edit(signal_node, bound_node) -> void:
 	var data = bound_node.get_condition_data()
@@ -829,6 +1047,7 @@ func _on_action_replace(signal_node, bound_node) -> void:
 func _on_action_delete(signal_node, bound_node) -> void:
 	blocks_container.remove_child(bound_node)
 	bound_node.queue_free()
+	_save_sheet()
 
 func _on_action_edit(signal_node, bound_node) -> void:
 	var data = bound_node.get_action_data()

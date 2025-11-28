@@ -5,17 +5,34 @@ signal insert_condition_requested(event_node)
 signal replace_event_requested(event_node)
 signal delete_event_requested(event_node)
 signal edit_event_requested(event_node)
+signal selected(block_node)
 
 var event_data: FKEventBlock
 var registry: Node
+var is_selected: bool = false
 
 var context_menu: PopupMenu
 var label: Label
+var panel: PanelContainer
+var normal_stylebox: StyleBox
+var selected_stylebox: StyleBox
 
 func _ready() -> void:
 	label = get_node_or_null("Panel/MarginContainer/HBoxContainer/Label")
+	panel = get_node_or_null("Panel")
 	
-	# Connect gui_input for right-click detection
+	# Store original stylebox and create selected version
+	if panel:
+		normal_stylebox = panel.get_theme_stylebox("panel")
+		if normal_stylebox:
+			selected_stylebox = normal_stylebox.duplicate()
+			if selected_stylebox is StyleBoxFlat:
+				selected_stylebox.border_color = Color(1.0, 1.0, 1.0, 1.0)
+				selected_stylebox.border_width_left = 6
+				selected_stylebox.shadow_color = Color(0.2, 0.8, 0.3, 0.5)
+				selected_stylebox.shadow_size = 8
+	
+	# Connect gui_input for click detection
 	gui_input.connect(_on_gui_input)
 	
 	# Try to get context menu and connect if available
@@ -27,8 +44,14 @@ func _setup_context_menu() -> void:
 		context_menu.id_pressed.connect(_on_context_menu_id_pressed)
 
 func _on_gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			# Left-click to select
+			selected.emit(self)
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			# Right-click for context menu
+			selected.emit(self)
+			
 			# Try to get context menu if we don't have it yet
 			if not context_menu:
 				context_menu = get_node_or_null("ContextMenu")
@@ -36,7 +59,7 @@ func _on_gui_input(event: InputEvent) -> void:
 					context_menu.id_pressed.connect(_on_context_menu_id_pressed)
 			
 			if context_menu:
-				context_menu.position = get_global_mouse_position()
+				context_menu.position = DisplayServer.mouse_get_position()
 				context_menu.popup()
 
 func _on_context_menu_id_pressed(id: int) -> void:
@@ -90,6 +113,15 @@ func _update_label() -> void:
 func update_display() -> void:
 	"""Refresh the label display."""
 	_update_label()
+
+func set_selected(value: bool) -> void:
+	"""Set the selection state with visual feedback."""
+	is_selected = value
+	if panel and normal_stylebox and selected_stylebox:
+		if is_selected:
+			panel.add_theme_stylebox_override("panel", selected_stylebox)
+		else:
+			panel.add_theme_stylebox_override("panel", normal_stylebox)
 
 func _get_drag_data(at_position: Vector2):
 	# Create a simple preview control
