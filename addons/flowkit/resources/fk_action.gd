@@ -1,6 +1,9 @@
 extends Resource
 class_name FKAction
 
+func get_description() -> String:
+	return ""
+
 func get_id() -> String:
 	return ""
 
