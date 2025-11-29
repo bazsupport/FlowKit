@@ -1,5 +1,8 @@
 extends FKAction
 
+func get_description() -> String:
+	return "Sets the rotation of the character in radians."
+
 func get_id() -> String:
 	return "set_rotation"
 

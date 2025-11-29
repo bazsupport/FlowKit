@@ -1,5 +1,8 @@
 extends FKAction
 
+func get_description() -> String:
+	return "Moves the character body and handles collisions by sliding along surfaces."
+
 func get_id() -> String:
 	return "move_and_slide"
 

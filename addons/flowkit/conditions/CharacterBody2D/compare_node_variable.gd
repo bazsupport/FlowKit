@@ -1,5 +1,8 @@
 extends FKCondition
 
+func get_description() -> String:
+	return "Checks if the character body is on the floor."
+
 func get_id() -> String:
 	return "is_on_floor"
 

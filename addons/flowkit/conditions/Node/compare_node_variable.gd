@@ -1,5 +1,8 @@
 extends FKCondition
 
+func get_description() -> String:
+	return "Compares a property of the node against a specified value using the given comparison operator."
+
 func get_id() -> String:
 	return "compare_node_variable"
 

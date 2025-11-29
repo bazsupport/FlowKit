@@ -1,5 +1,8 @@
 extends FKAction
 
+func get_description() -> String:
+	return "Sets the Y coordinate of the character's position."
+
 func get_id() -> String:
 	return "set_position_y"
 

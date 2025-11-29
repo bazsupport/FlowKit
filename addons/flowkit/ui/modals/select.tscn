@@ -10,6 +10,7 @@ size = Vector2i(400, 320)
 borderless = false
 keep_title_visible = true
 script = ExtResource("1_select")
+unresizable = false
 
 [node name="VBoxContainer" type="VBoxContainer" parent="."]
 anchors_preset = 15

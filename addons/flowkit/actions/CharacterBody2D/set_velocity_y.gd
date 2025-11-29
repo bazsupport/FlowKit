@@ -1,5 +1,8 @@
 extends FKAction
 
+func get_description() -> String:
+	return "Sets the Y component of the character's velocity."
+
 func get_id() -> String:
 	return "set_velocity_y"
 

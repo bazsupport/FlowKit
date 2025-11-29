@@ -1,0 +1,3 @@
+[gd_scene format=3 uid="uid://cuyhcf5ew30ul"]
+
+[node name="TopDownPlayerMovement" type="Node2D"]

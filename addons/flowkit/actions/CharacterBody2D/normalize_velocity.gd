@@ -1,5 +1,8 @@
 extends FKAction
 
+func get_description() -> String:
+	return "Normalizes the character's velocity vector to have a length of 1."
+
 func get_id() -> String:
 	return "normalize_velocity"
 

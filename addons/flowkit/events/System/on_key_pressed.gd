@@ -1,5 +1,8 @@
 extends FKEvent
 
+func get_description() -> String:
+	return "Triggers when the specified key or input action is pressed."
+
 func get_id() -> String:
 	return "on_key_pressed"
 

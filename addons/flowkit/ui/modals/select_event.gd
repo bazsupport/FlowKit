@@ -9,6 +9,7 @@ var available_events: Array = []
 
 @onready var search_box := $VBoxContainer/SearchBox
 @onready var item_list := $VBoxContainer/ItemList
+@onready var description_label := $VBoxContainer/DescriptionPanel/ScrollContainer/DescriptionLabel
 
 var _all_items_cache: Array = []
 
@@ -18,6 +19,13 @@ func _ready() -> void:
 		
 	if item_list:
 		item_list.item_activated.connect(_on_item_activated)
+		item_list.item_selected.connect(_on_item_selected)
+	
+	# Set description panel style
+	var panel = $VBoxContainer/DescriptionPanel
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.2, 0.2, 0.2, 0.8)
+	panel.add_theme_stylebox_override("panel", style)
 	
 	# Load all available events
 	_load_available_events()
@@ -63,6 +71,7 @@ func populate_events(node_path: String, node_class: String) -> void:
 		return
 	
 	_all_items_cache.clear()
+	description_label.text = ""
 	
 	# Filter events that support this node type
 	for event in available_events:
@@ -149,6 +158,20 @@ func _on_item_activated(index: int) -> void:
 	print("Event selected: ", event_id, " for node: ", selected_node_path, " with inputs: ", event_inputs)
 	event_selected.emit(selected_node_path, event_id, event_inputs)
 	hide()
+
+func _on_item_selected(index: int) -> void:
+	"""Update description when item is selected."""
+	if item_list.is_item_disabled(index):
+		description_label.text = ""
+		return
+	
+	var event_id = item_list.get_item_metadata(index)
+	
+	# Find the event and get description
+	for event in available_events:
+		if event.has_method("get_id") and event.get_id() == event_id:
+			description_label.text = event.get_description()
+			break
 
 func _on_popup_hide() -> void:
 	if search_box:

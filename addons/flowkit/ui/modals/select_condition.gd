@@ -9,6 +9,7 @@ var available_conditions: Array = []
 
 @onready var search_box := $VBoxContainer/SearchBox
 @onready var item_list := $VBoxContainer/ItemList
+@onready var description_label := $VBoxContainer/DescriptionPanel/ScrollContainer/DescriptionLabel
 
 var _all_items_cache: Array = []
 
@@ -18,6 +19,13 @@ func _ready() -> void:
 		
 	if item_list:
 		item_list.item_activated.connect(_on_item_activated)
+		item_list.item_selected.connect(_on_item_selected)
+	
+	# Set description panel style
+	var panel = $VBoxContainer/DescriptionPanel
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.2, 0.2, 0.2, 0.8)
+	panel.add_theme_stylebox_override("panel", style)
 	
 	# Load all available conditions
 	_load_available_conditions()
@@ -63,6 +71,7 @@ func populate_conditions(node_path: String, node_class: String) -> void:
 		return
 	
 	_all_items_cache.clear()
+	description_label.text = ""
 	
 	# Filter conditions that support this node type
 	for condition in available_conditions:
@@ -130,6 +139,21 @@ func _on_item_activated(index: int) -> void:
 	print("Condition selected: ", condition_id, " for node: ", selected_node_path)
 	condition_selected.emit(selected_node_path, condition_id, inputs)
 	hide()
+
+func _on_item_selected(index: int) -> void:
+	"""Update description when item is selected."""
+	if item_list.is_item_disabled(index):
+		description_label.text = ""
+		return
+	
+	var metadata = item_list.get_item_metadata(index)
+	var condition_id = metadata["id"]
+	
+	# Find the condition and get description
+	for condition in available_conditions:
+		if condition.get_id() == condition_id:
+			description_label.text = condition.get_description()
+			break
 
 func _on_popup_hide() -> void:
 	if search_box:

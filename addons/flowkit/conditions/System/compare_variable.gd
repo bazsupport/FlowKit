@@ -1,5 +1,8 @@
 extends FKCondition
 
+func get_description() -> String:
+	return "Compares a global variable against a specified value using the given comparison operator."
+
 func get_id() -> String:
 	return "compare_variable"
 
