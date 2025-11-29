@@ -113,24 +113,28 @@ func load_from_config() -> void:
 	
 	# Load nodes
 	recent_nodes.clear()
-	for key in config.get_section_keys("recent_nodes"):
-		var node_data = config.get_value("recent_nodes", key)
-		recent_nodes.append(node_data)
+	if config.has_section("recent_nodes"):
+		for key in config.get_section_keys("recent_nodes"):
+			var node_data = config.get_value("recent_nodes", key)
+			recent_nodes.append(node_data)
 	
 	# Load actions
 	recent_actions.clear()
-	for key in config.get_section_keys("recent_actions"):
-		var action_data = config.get_value("recent_actions", key)
-		recent_actions.append(action_data)
+	if config.has_section("recent_actions"):
+		for key in config.get_section_keys("recent_actions"):
+			var action_data = config.get_value("recent_actions", key)
+			recent_actions.append(action_data)
 	
 	# Load events
 	recent_events.clear()
-	for key in config.get_section_keys("recent_events"):
-		var event_data = config.get_value("recent_events", key)
-		recent_events.append(event_data)
+	if config.has_section("recent_events"):
+		for key in config.get_section_keys("recent_events"):
+			var event_data = config.get_value("recent_events", key)
+			recent_events.append(event_data)
 	
 	# Load conditions
 	recent_conditions.clear()
-	for key in config.get_section_keys("recent_conditions"):
-		var condition_data = config.get_value("recent_conditions", key)
-		recent_conditions.append(condition_data)
+	if config.has_section("recent_conditions"):
+		for key in config.get_section_keys("recent_conditions"):
+			var condition_data = config.get_value("recent_conditions", key)
+			recent_conditions.append(condition_data)
