@@ -50,7 +50,7 @@ func _check_for_scene_change() -> void:
 func _on_scene_changed(scene_root: Node) -> void:
 	last_scene = scene_root
 	active_behavior_nodes.clear()  # Clear behavior tracking on scene change
-	
+    
 	if scene_root == null:
 		# Scene unloaded: clear active sheets (optional)
 		active_sheets.clear()
@@ -58,25 +58,26 @@ func _on_scene_changed(scene_root: Node) -> void:
 		return
 
 	var scene_path: String = scene_root.scene_file_path
+	var scene_uid = ResourceLoader.get_resource_uid(scene_path)
 	var scene_name: String = scene_path.get_file().get_basename()
-	print("[FlowKit] Scene detected:", scene_name, " (", scene_root.name, ")")
-	
+	print("[FlowKit] Scene detected:", scene_name, " (", scene_root.name, ") UID:", scene_uid)
+
 	# Sync node variables from metadata to FlowKitSystem
 	var system: Node = get_tree().root.get_node_or_null("/root/FlowKitSystem")
 	if system and system.has_method("sync_scene_node_variables"):
 		system.sync_scene_node_variables(scene_root)
-	
+
 	# Scan and activate behaviors for all nodes in the scene
 	_scan_and_activate_behaviors(scene_root)
-	
-	_load_sheet_for_scene(scene_name)
+
+	_load_sheet_for_scene(scene_uid, scene_name)
 
 
-func _load_sheet_for_scene(scene_name: String) -> void:
+func _load_sheet_for_scene(scene_uid: int, scene_name: String) -> void:
 	# Clear previous sheet(s)
 	active_sheets.clear()
 
-	var sheet_path: String = "res://addons/flowkit/saved/event_sheet/%s.tres" % scene_name
+	var sheet_path: String = "res://addons/flowkit/saved/event_sheet/%d.tres" % scene_uid
 
 	# Debug: show whether the file exists
 	if ResourceLoader.exists(sheet_path):
