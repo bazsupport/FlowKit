@@ -76,9 +76,11 @@ item_1/id = 1
 [node name="Edit" type="PopupMenu" parent="OuterVBox/TopMargin/MenuBar"]
 oversampling_override = 1.0
 size = Vector2i(150, 120)
-item_count = 1
+item_count = 2
 item_0/text = "Generate Events/Conditions/Actions (MAY BE UNSTABLE)"
 item_0/id = 0
+item_1/text = "Generate Provider Manifest (for Export)"
+item_1/id = 1
 
 [node name="ScrollContainer" type="ScrollContainer" parent="OuterVBox"]
 layout_mode = 2
@@ -141,6 +143,7 @@ text = "➕ Add Event"
 
 [node name="ExpressionModal" parent="." instance=ExtResource("11_expression_editor")]
 
+[connection signal="generate_manifest" from="OuterVBox/TopMargin/MenuBar" to="." method="_on_generate_manifest"]
 [connection signal="generate_providers" from="OuterVBox/TopMargin/MenuBar" to="." method="_on_generate_providers"]
 [connection signal="new_sheet" from="OuterVBox/TopMargin/MenuBar" to="." method="_on_new_sheet"]
 [connection signal="save_sheet" from="OuterVBox/TopMargin/MenuBar" to="." method="_on_save_sheet"]

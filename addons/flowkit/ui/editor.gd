@@ -502,6 +502,43 @@ func _on_generate_providers() -> void:
 		dialog.queue_free()
 	)
 
+func _on_generate_manifest() -> void:
+	if not generator:
+		print("[FlowKit] Generator not available")
+		return
+	
+	print("[FlowKit] Generating provider manifest for export...")
+	
+	var result = generator.generate_manifest()
+	
+	var message = "Manifest generated!\n"
+	message += "Actions: %d\n" % result.actions
+	message += "Conditions: %d\n" % result.conditions
+	message += "Events: %d\n" % result.events
+	message += "Behaviors: %d\n" % result.behaviors
+	
+	if result.errors.size() > 0:
+		message += "\nErrors:\n"
+		for error in result.errors:
+			message += "- " + error + "\n"
+	else:
+		message += "\nThe manifest has been saved and will be used\n"
+		message += "in exported builds to load providers."
+	
+	print(message)
+	
+	# Show info dialog
+	var dialog = AcceptDialog.new()
+	dialog.dialog_text = message
+	dialog.title = "FlowKit Manifest Generator"
+	dialog.ok_button_text = "OK"
+	add_child(dialog)
+	_popup_centered_on_editor(dialog)
+	
+	dialog.confirmed.connect(func():
+		dialog.queue_free()
+	)
+
 func _on_add_event_button_pressed() -> void:
 	if not editor_interface:
 		return

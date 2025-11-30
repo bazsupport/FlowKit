@@ -4,6 +4,7 @@ extends MenuBar
 signal new_sheet
 signal save_sheet
 signal generate_providers
+signal generate_manifest
 
 func _on_file_id_pressed(id: int) -> void:
 	match id:
@@ -14,5 +15,7 @@ func _on_file_id_pressed(id: int) -> void:
 
 func _on_edit_id_pressed(id: int) -> void:
 	match id:
-		0: # Generate
+		0: # Generate Providers
 			emit_signal("generate_providers")
+		1: # Generate Manifest (for export)
+			emit_signal("generate_manifest")
